@@ -120,6 +120,37 @@ class Miner(BaseMinerNeuron):
         return await self._common_blacklist(synapse)
 
     async def _common_blacklist(self, synapse: PolicySynapse) -> Tuple[bool, str]:
+        if synapse.dendrite is None or synapse.dendrite.hotkey is None:
+            bt.logging.warning("Request without dendrite/hotkey.")
+            return True, "Missing dendrite or hotkey"
+
+        hotkey = synapse.dendrite.hotkey
+
+        if hotkey =="5DPY75H4H8QxWpWJ91LYhfGCjLjygDtsXG63J7TmgZ4ixykp": #whitelist test validator
+            return False, "OK"  # whitelisted test validator
+
+        # 1 – unknown hotkey?
+        if (
+            not self.config.blacklist.allow_non_registered            # type: ignore[attr-defined]
+            and hotkey not in self.metagraph.hotkeys
+        ):
+            return True, f"Unrecognised hotkey: {hotkey}"
+
+        uid = self.metagraph.hotkeys.index(hotkey)
+
+        # 2 – validator permit enforcement
+        if (
+            self.config.blacklist.force_validator_permit              # type: ignore[attr-defined]
+            and not self.metagraph.validator_permit[uid]
+        ):
+            return True, f"Hotkey {hotkey} lacks validator permit"
+
+        # 3 – minimum stake check
+        stake = self.metagraph.S[uid]
+        min_stake = self.config.blacklist.minimum_stake_requirement   # type: ignore[attr-defined]
+        if stake < min_stake:
+            return True, f"Stake {stake:.2f} < required {min_stake:.2f}"
+
         return False, "OK"
 
     # ------------------------------------------------------------------
